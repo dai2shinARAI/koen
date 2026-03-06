@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>物語設定エディタ v4 sprint6</title>
+<title>物語設定エディタ v5 sprint14</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
 <style>
@@ -422,6 +422,7 @@ body {
 .breadcrumb-main { color: var(--color-text); font-weight: 500; }
 .breadcrumb-sep  { color: var(--color-text-subtle); font-size: 12px; }
 
+.tab-bar-wrap { flex-shrink: 0; }
 .tab-bar { display: flex; gap: 2px; flex-shrink: 0; }
 .tab-btn {
     padding: 4px 12px;
@@ -1176,7 +1177,30 @@ body {
     .sidebar-delete-btn { color: var(--color-text-subtle); }
 
     /* M3-07: タブバーを横スクロール可能に */
-    .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-shrink: 0; }
+    .tab-bar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-shrink: 0;
+        scrollbar-width: thin;
+        position: relative;
+    }
+    .tab-bar::-webkit-scrollbar { height: 3px; }
+    .tab-bar::-webkit-scrollbar-thumb { background: var(--color-text-subtle); border-radius: 2px; }
+    .tab-bar::-webkit-scrollbar-track { background: transparent; }
+
+    /* M3-07b: 右端にフェードヒントで続きがあることを示す */
+    .tab-bar-wrap { position: relative; flex-shrink: 0; }
+    .tab-bar-wrap::after {
+        content: '';
+        position: absolute;
+        top: 0; right: 0; bottom: 0;
+        width: 28px;
+        background: linear-gradient(to right, transparent, var(--color-bg));
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 0.2s;
+    }
+    .tab-bar-wrap.scrolled-end::after { opacity: 0; }
 }
 
 /* ═══════════════════════════════════════
@@ -1809,7 +1833,7 @@ body {
                     Select something to begin
                 </span>
             </div>
-            <div class="tab-bar" id="js-tab-bar"></div>
+            <div class="tab-bar-wrap" id="js-tab-bar-wrap"><div class="tab-bar" id="js-tab-bar"></div></div>
         </div>
         <div class="editor-scroll" id="js-editor-body">
             <div class="empty-state">

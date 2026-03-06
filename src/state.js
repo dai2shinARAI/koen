@@ -164,10 +164,13 @@ class StateManager {
 
     _scheduleAutosave() {
         clearTimeout(this._saveTimer);
-        this._saveTimer = setTimeout(() => this._persist(), this._saveDelay);
+        this._saveTimer = setTimeout(() => this._persist({
+            saveKind: 'auto',
+            showToast: false,
+        }), this._saveDelay);
     }
 
-    _persist(silent = false) {
+    _persist({ saveKind = 'manual', showToast = true } = {}) {
         try {
             this._emergencyBuffer = structuredClone
                 ? structuredClone(this._state)
@@ -182,14 +185,15 @@ class StateManager {
                 this._updateWorkIndex(this._currentWorkId, { lastModified: new Date().toISOString() });
                 // F-10: 自動保存のたびにバージョン履歴スナップショットを記録
                 if (typeof VersionHistory !== 'undefined') {
-                    const kind = silent ? 'auto' : 'manual';
-                    VersionHistory.push(this._currentWorkId, this._state, kind);
+                    VersionHistory.push(this._currentWorkId, this._state, saveKind);
                 }
             } else {
                 // フォールバック: 旧キーに保存
                 localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(this._state));
             }
-            if (!silent) Toast.show('✓ 自動保存');
+            if (showToast) {
+                Toast.show(saveKind === 'auto' ? '✓ 自動保存' : '✓ 保存しました');
+            }
             Banner.hide();
             this._markClean();
         } catch (error) {
@@ -236,10 +240,10 @@ class StateManager {
         WorkSwitcherUI.render();
     }
 
-    /** 即時保存（作品切り替え前に呼ぶ）。silent=trueのときToastを表示しない */
-    _saveNow(silent = true) {
+    /** 即時保存（作品切り替え前に呼ぶ）。showToast=trueのときToastを表示する */
+    _saveNow(showToast = false) {
         clearTimeout(this._saveTimer);
-        this._persist(silent);
+        this._persist({ saveKind: 'manual', showToast });
     }
 
     getCurrentWorkId() { return this._currentWorkId; }
@@ -402,6 +406,9 @@ class StateManager {
         const remaining = index.filter(w => w.id !== delId);
         this._saveWorkIndex(remaining);
         localStorage.removeItem(WORK_DATA_KEY(delId));
+        if (typeof VersionHistory !== 'undefined') {
+            VersionHistory.clear(delId);
+        }
         const nextId = remaining[0].id;
         this._currentWorkId = null; // 一時的にnullにしてSWITCH_WORKを呼ぶ
         this.dispatch('SWITCH_WORK', { targetId: nextId, silent: true });
@@ -434,40 +441,47 @@ class StateManager {
      * @param {{ data: AppState, mode: 'overwrite'|'new', versionNote: string }} payload
      */
     _handleImportFile({ data, mode, versionNote }) {
-        if (mode === 'new') {
-            const newId = generateId();
-            this._saveNow();
-            this._currentWorkId = newId;
-            this._state = data;
-            this._dirty = false;
-            this._updateWorkIndex(newId, {
-                title: data.workTitle || '（無題）',
-                lastModified: new Date().toISOString(),
-            });
-            localStorage.setItem(WORK_DATA_KEY(newId), JSON.stringify(data));
-        } else {
-            // 現在作品に上書き
-            this._state = data;
-            this._dirty = false;
-            if (this._currentWorkId) {
-                this._updateWorkIndex(this._currentWorkId, {
-                    title: data.workTitle || '（無題）',
+        try {
+            const validatedData = validateImportedState(data);
+            const warnings = checkIntegrity(validatedData);
+
+            if (mode === 'new') {
+                const newId = generateId();
+                this._saveNow();
+                this._currentWorkId = newId;
+                this._state = validatedData;
+                this._dirty = false;
+                this._updateWorkIndex(newId, {
+                    title: validatedData.workTitle || '（無題）',
                     lastModified: new Date().toISOString(),
                 });
-                localStorage.setItem(WORK_DATA_KEY(this._currentWorkId), JSON.stringify(data));
+                localStorage.setItem(WORK_DATA_KEY(newId), JSON.stringify(validatedData));
+            } else {
+                // 現在作品に上書き
+                this._state = validatedData;
+                this._dirty = false;
+                if (this._currentWorkId) {
+                    this._updateWorkIndex(this._currentWorkId, {
+                        title: validatedData.workTitle || '（無題）',
+                        lastModified: new Date().toISOString(),
+                    });
+                    localStorage.setItem(WORK_DATA_KEY(this._currentWorkId), JSON.stringify(validatedData));
+                }
             }
+            this._subscribers.forEach(fn => fn(this._state));
+            document.getElementById('js-work-title').value = validatedData.workTitle || '';
+            AppState.select(null, null);
+            if (typeof SearchUI !== 'undefined') SearchUI.clear();
+            SidebarRenderer.renderAll();
+            EditorRenderer.renderEmpty();
+            WorkSwitcherUI.render();
+            showIntegrityWarnings(warnings);
+            const modeNote = mode === 'new' ? '新規作品として追加' : '上書き';
+            Toast.show(`読み込みました（${modeNote}${versionNote ? '・' + versionNote : ''}）`);
+        } catch (error) {
+            Toast.show(`読み込みに失敗しました: ${error.message || '形式エラー'}`);
+            console.error('IMPORT_FILE failed:', error);
         }
-        this._subscribers.forEach(fn => fn(this._state));
-        document.getElementById('js-work-title').value = data.workTitle || '';
-        AppState.select(null, null);
-        if (typeof SearchUI !== 'undefined') SearchUI.clear();
-        SidebarRenderer.renderAll();
-        EditorRenderer.renderEmpty();
-        WorkSwitcherUI.render();
-        const warnings = checkIntegrity(data);
-        showIntegrityWarnings(warnings);
-        const modeNote = mode === 'new' ? '新規作品として追加' : '上書き';
-        Toast.show(`読み込みました（${modeNote}${versionNote ? '・' + versionNote : ''}）`);
     }
 
     tryRestoreFromLocalStorage() {

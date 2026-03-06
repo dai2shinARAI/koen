@@ -565,6 +565,7 @@ const EditorRenderer = {
 
     _setTabBar(tabs, activeKey, type, entityId) {
         const tabBar = document.getElementById('js-tab-bar');
+        const wrap = document.getElementById('js-tab-bar-wrap');
         DOM.replace(tabBar, ...tabs.map(tab => {
             const button = DOM.create('button', {
                 className: 'tab-btn',
@@ -573,6 +574,25 @@ const EditorRenderer = {
             }, [tab.label]);
             return button;
         }));
+
+        /* スクロール位置に応じてフェードヒントを制御 */
+        const updateFade = tabBar._updateFadeHandler || (() => {
+            if (!wrap) return;
+            const atEnd = tabBar.scrollLeft + tabBar.clientWidth >= tabBar.scrollWidth - 2;
+            wrap.classList.toggle('scrolled-end', atEnd);
+        });
+        if (tabBar._updateFadeHandler) {
+            tabBar.removeEventListener('scroll', tabBar._updateFadeHandler);
+        }
+        tabBar._updateFadeHandler = updateFade;
+        tabBar.addEventListener('scroll', updateFade, { passive: true });
+
+        /* 選択中タブを画面内にスクロール */
+        requestAnimationFrame(() => {
+            const active = tabBar.querySelector('[aria-selected="true"]');
+            if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+            updateFade();
+        });
     },
 
     _buildDangerZone(onDelete, label) {

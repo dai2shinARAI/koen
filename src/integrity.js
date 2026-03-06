@@ -67,6 +67,32 @@ function showIntegrityWarnings(warnings) {
     Banner.show(msg);
 }
 
+function ensureImportedId(id, usedIds) {
+    const normalizedId = (typeof id === 'string' ? id.trim() : '');
+    if (normalizedId && !usedIds.has(normalizedId)) {
+        usedIds.add(normalizedId);
+        return normalizedId;
+    }
+    const newId = generateId();
+    usedIds.add(newId);
+    return newId;
+}
+
+function normalizeImportedStringArray(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .filter(item => typeof item === 'string')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function normalizeImportedObjectArray(value, createEntry) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .filter(item => item && typeof item === 'object' && !Array.isArray(item))
+        .map(item => ({ ...createEntry(), ...item }));
+}
+
 /* ═══════════════════════════════════════════════════════════
    IMPORT VALIDATOR
    - インポートデータの構造を検証し、不正なデータでクラッシュしない
@@ -79,22 +105,63 @@ function validateImportedState(data) {
     if (!Array.isArray(data.relations)) throw new Error('relations フィールドが不正です');
     if (!Array.isArray(data.episodes))  throw new Error('episodes フィールドが不正です');
 
-    // IDの重複チェック
-    const allIds = [
-        ...data.persons.map(p => p.id),
-        ...data.relations.map(r => r.id),
-        ...data.episodes.map(e => e.id),
-    ].filter(Boolean);
-    const idSet = new Set(allIds);
-    if (idSet.size !== allIds.length) {
-        console.warn('インポートデータにID重複があります。続行します。');
-    }
+    const usedIds = new Set();
 
-    // persons の各要素が最低限の構造を持つことを確認
-    data.persons.forEach((p, i) => {
-        if (!p || typeof p !== 'object') throw new Error(`persons[${i}] が不正です`);
-        if (!p.id) data.persons[i].id = generateId(); // IDがなければ付与
+    const persons = data.persons.map((person, index) => {
+        if (!person || typeof person !== 'object' || Array.isArray(person)) {
+            throw new Error(`persons[${index}] が不正です`);
+        }
+        return {
+            ...createPerson(),
+            ...person,
+            id: ensureImportedId(person.id, usedIds),
+            sexualHistory: normalizeImportedObjectArray(person.sexualHistory, createSexualHistoryEntry),
+            educationHistory: normalizeImportedObjectArray(person.educationHistory, createEducationHistoryEntry),
+        };
     });
 
-    return data;
+    const relations = data.relations.map((relation, index) => {
+        if (!relation || typeof relation !== 'object' || Array.isArray(relation)) {
+            throw new Error(`relations[${index}] が不正です`);
+        }
+        return {
+            ...createRelation('', ''),
+            ...relation,
+            id: ensureImportedId(relation.id, usedIds),
+            personAId: typeof relation.personAId === 'string' ? relation.personAId : '',
+            personBId: typeof relation.personBId === 'string' ? relation.personBId : '',
+            isOneWay: relation.isOneWay === true,
+            sexualHistory: normalizeImportedObjectArray(relation.sexualHistory, createSexualHistoryEntry),
+            lies: normalizeImportedObjectArray(relation.lies, createLieEntry),
+            emotionalLog: normalizeImportedObjectArray(relation.emotionalLog, createEmotionalLogEntry),
+        };
+    });
+
+    const episodes = data.episodes.map((episode, index) => {
+        if (!episode || typeof episode !== 'object' || Array.isArray(episode)) {
+            throw new Error(`episodes[${index}] が不正です`);
+        }
+        return {
+            ...createEpisode(),
+            ...episode,
+            id: ensureImportedId(episode.id, usedIds),
+            tags: normalizeTags(typeof episode.tags === 'string' ? episode.tags : ''),
+            characterIds: normalizeImportedStringArray(episode.characterIds),
+            relationIds: normalizeImportedStringArray(episode.relationIds),
+        };
+    });
+
+    const storyMeta = (data.storyMeta && typeof data.storyMeta === 'object' && !Array.isArray(data.storyMeta))
+        ? { ...createInitialState().storyMeta, ...data.storyMeta }
+        : createInitialState().storyMeta;
+
+    return {
+        ...createInitialState(),
+        ...data,
+        workTitle: typeof data.workTitle === 'string' ? data.workTitle : '',
+        persons,
+        relations,
+        episodes,
+        storyMeta,
+    };
 }
