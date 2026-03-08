@@ -1176,7 +1176,20 @@ body {
     /* M3-06: 削除ボタンをタッチデバイスで常時表示（hover 不要） */
     .sidebar-delete-btn { color: var(--color-text-subtle); }
 
-    /* M3-07: タブバーを横スクロール可能に */
+    /* M3-07: ツールバーを2段組みにしてタブバーを横スクロール可能に */
+    .editor-toolbar {
+        flex-wrap: wrap;
+        row-gap: 4px;
+        padding: 8px 12px;
+        min-height: unset;
+    }
+    .editor-breadcrumb { flex-basis: 100%; }
+    .tab-bar-wrap {
+        position: relative;
+        width: 100%;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
     .tab-bar {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -1189,7 +1202,6 @@ body {
     .tab-bar::-webkit-scrollbar-track { background: transparent; }
 
     /* M3-07b: 右端にフェードヒントで続きがあることを示す */
-    .tab-bar-wrap { position: relative; flex-shrink: 0; }
     .tab-bar-wrap::after {
         content: '';
         position: absolute;
